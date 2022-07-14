@@ -1,0 +1,18 @@
+[features]
+seeds = false
+[programs.localnet]
+# token_withdraw = "3ERnPj1gQnKzagvWCjqZGskJszcLhunXuLfYqjuSvxBW"
+# token_withdraw = "2RNuwhYFrXZDm5e9bb15ypf2Y49RMu7FhtqaGUe8R8BP"
+token_withdraw = "FkyTHcX3izEyEoMEwqpQhZ9qLqwv37FMJg345pzej7KM"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+# cluster = "localnet"
+cluster = "devnet"
+# wallet = "/home/rosh/.config/solana/id.json"
+wallet = "/home/nick619/.config/solana/id.json"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
