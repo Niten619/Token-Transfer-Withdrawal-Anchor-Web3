@@ -12,6 +12,7 @@ import { Program, AnchorProvider, web3 } from '@project-serum/anchor';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets';  // THIS CAUSES "CRYPTO" MODULE ERROR
 import { useWallet, WalletProvider, ConnectionProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { createBurnInstruction } from "@solana/spl-token";
 require('@solana/wallet-adapter-react-ui/styles.css');
 
 const wallets = [
@@ -80,8 +81,7 @@ function App() {
     return provider;
   }
 
-  async function transferTransaction(formSubmit) {
-    console.log("FormSubmit:", formSubmit)
+  async function transferTransaction() {
     console.log('rkey:', rkey)
     console.log("amount (from front-end):", sol_amount)
     console.log("amount type (from front-end):", typeof sol_amount)
@@ -94,18 +94,49 @@ function App() {
 
     const ESCROW_PDA_SEED = "escrow_seed";
     const TOKEN_ESCROW_PDA_SEED = "token_escrow_seed";
-    const vault = Keypair.generate();
-    // const sender_account = Keypair.generate();
+    const vault = anchor.web3.Keypair.generate();
     const sender_account = new PublicKey(senderaddress);
-    const receiver_account_anchorkeypair = Keypair.generate();
-    const receiver_account_web3keypair = new Keypair();
+    // const receiver_account_anchorkeypair = Keypair.generate();
+    // const receiver_account_web3keypair = new Keypair();
     const receiver_account = new PublicKey(rkey);
-    console.log("receiver_account_anchorkeypair:", receiver_account_anchorkeypair)
-    console.log("receiver_account_web3keypair:", receiver_account_web3keypair)
+    console.log("vault:", vault)
+    console.log("vault.secryKey:", vault.secretKey)
+    console.log("type of vault:", typeof vault)
+    console.log("vault publickey:", vault.publicKey.toBase58())
+    // console.log("receiver_account_anchorkeypair:", receiver_account_anchorkeypair)
+    // console.log("receiver_account_web3keypair:", receiver_account_web3keypair)
     console.log("receiver_account:", receiver_account)
     var escrow_account = null;
     var token_escrow = null;
 
+    // Storing PDA to the browser's local storage
+    const valutObj = {
+      vault_publickey: vault.publicKey.toBase58(),
+      vault_secretkey: vault.secretKey
+    };
+    const myVault = JSON.stringify(valutObj);
+    // console.log("myVault:", myVault)
+    localStorage.setItem("vaultData", myVault);
+
+    // // Retrieving Data from the browser's local storage
+    // const text = localStorage.getItem("vaultData");
+    // const obj = JSON.parse(text);
+    // console.log("obj:", obj)
+    // console.log("vault_publickey:", obj.vault_publickey)
+    // console.log('vault.secretKey(receive):', obj.vault_secretkey)
+
+    // // Iterating through dictionary-like js object
+    // var seed_list = []
+    // for (const k of Object.values(obj.vault_secretkey)){
+    //   // console.log(k)
+    //   seed_list.push(k)
+    // }
+    // console.log(seed_list)
+    // const vault_seed = Uint8Array.from(seed_list)
+    // const vault_keypair = Keypair.fromSecretKey(vault_seed)
+    // console.log("vault_keypair:", vault_keypair)
+
+    /* create a provider that will establish a connection to the solana network */
     const provider = await getProvider();
 
     /* This supposedly works only on test code */
@@ -144,21 +175,76 @@ function App() {
     const sender_keypair = Keypair.fromSecretKey(seed)
     console.log("Signer Keypair:", sender_keypair)
 
-      /* interact with the program via rpc */
-      await program.rpc.initializeNativeSol(
-        new anchor.BN(start_time),
-        new anchor.BN(amount),
-        {
-        accounts: {
-          escrowAccount: escrow_account,
-          senderAccount: sender_account,
-          systemProgram: SystemProgram.programId,
-          receiverAccount: receiver_account,
-          vault: vault.publicKey
-          },
-        signers: [sender_keypair]
-        }
-      );
+    /* interact with the program via rpc */
+    await program.rpc.initializeNativeSol(
+      new anchor.BN(start_time),
+      new anchor.BN(amount),
+      {
+      accounts: {
+        escrowAccount: escrow_account,
+        senderAccount: sender_account,
+        systemProgram: SystemProgram.programId,
+        receiverAccount: receiver_account,
+        vault: vault.publicKey
+        },
+      signers: [sender_keypair]
+      }
+    );
+}
+
+async function withdrawTransaction() {
+  /* create a provider that will establish a connection to the solana network */
+  const provider = await getProvider();
+  /* create the program interface combining the idl, program ID, and provider */
+  const program = new Program(idl, programID, provider);
+  console.log("programme:", program)
+
+  const sender_account = new PublicKey(senderaddress);
+  const amount = (sol_amount * LAMPORTS_PER_SOL).toString();
+  console.log("amount:", amount)
+  const ESCROW_PDA_SEED = "escrow_seed";
+  var escrow_account = null;
+  const [_escrow_account, _bump] = await PublicKey.findProgramAddress([
+    Buffer.from(anchor.utils.bytes.utf8.encode(ESCROW_PDA_SEED)), 
+    sender_account.toBuffer()
+  ],
+  program.programId);
+  escrow_account = _escrow_account;
+  
+  const receiver_account = new PublicKey(rkey);
+
+  // Retrieving Data from the browser's local storage
+  const text = localStorage.getItem("vaultData");
+  const obj = JSON.parse(text);
+  console.log("obj:", obj)
+  console.log("vault_publickey:", obj.vault_publickey)
+  console.log('vault.secretKey(receive):', obj.vault_secretkey)
+
+  // Iterating through dictionary-like js object
+  var seed_list = []
+  for (const k of Object.values(obj.vault_secretkey)){
+    // console.log(k)
+    seed_list.push(k)
+  }
+  console.log(seed_list)
+  const vault_seed = Uint8Array.from(seed_list)
+  const vault_keypair = Keypair.fromSecretKey(vault_seed)
+  console.log("vault_keypair:", vault_keypair)
+
+  /* interact with the program via rpc */
+  await program.rpc.withdrawNativeSol(
+    new anchor.BN(amount),
+    {
+    accounts: {
+      escrowAccount: escrow_account,
+      senderAccount: sender_account,
+      systemProgram: SystemProgram.programId,
+      receiverAccount: receiver_account,
+      vault: new PublicKey(obj.vault_publickey)
+      },
+    signers: [vault_keypair]
+    }
+  );
 }
 
 const handleSubmit = async (event) => {
@@ -172,12 +258,14 @@ const handleSubmit = async (event) => {
   
   if (transactionMode == 0){ // Send
     console.log('Transaction Mode 0')
-    const formSubmit = { transactionMode, timestamp, sol_amount };
-    transferTransaction(formSubmit)
+    // const formSubmit = { transactionMode, timestamp, sol_amount };
+    // transferTransaction(formSubmit)
+    transferTransaction()
   } else {                  // Withdraw
     console.log('Transaction Mode 1')
-    const formSubmit = { transactionMode, sol_amount };
+    // const formSubmit = { transactionMode, sol_amount };
     // withdrawTransaction(formSubmit)
+    withdrawTransaction()
   }
   };
 
@@ -231,7 +319,7 @@ if (!wallet.connected) {
   return (
     <div className="App">
       <div className="login-form">
-        <div className="title">Zebec Protocal</div>
+        <div className="title">Zebec Protocol</div>
         {isSubmitted ? <div>User is successfully logged in</div> : renderForm}
       </div>
     </div>
