@@ -116,7 +116,6 @@ function App() {
     console.log("amount type:", typeof amount)
 
     const ESCROW_PDA_SEED = "escrow_seed";
-    const TOKEN_ESCROW_PDA_SEED = "token_escrow_seed";
     const vault = Keypair.generate();
     console.log("Logged in wallet address:", window.solana.publicKey.toString())
     const sender_account = new PublicKey(sender_address);
@@ -127,7 +126,6 @@ function App() {
     console.log("vault publickey:", vault.publicKey.toBase58())
     console.log("receiver_account:", receiver_account)
     var escrow_account = null;
-    var token_escrow = null;
 
     // Storing PDA to the browser's local storage
     const valutObj = {
@@ -161,43 +159,14 @@ function App() {
       sender_account.toBuffer()
     ],
     program.programId);
-  
-    const [_token_escrow_account, _token_bump] = await PublicKey.findProgramAddress([
-      Buffer.from(anchor.utils.bytes.utf8.encode(TOKEN_ESCROW_PDA_SEED)), 
-      sender_account.toBuffer()
-    ],
-    program.programId);
 
     escrow_account = _escrow_account;     // pda to store info about native sol
-    token_escrow = _token_escrow_account;  // pda to store info about tokens
     console.log("escrow_account address:", escrow_account.toBase58())
-    console.log("token_escrow:", token_escrow)
 
     console.log("systemProgram:", SystemProgram.programId)
     console.log("receiver_account:", receiver_account)
     console.log("vault:", vault.publicKey)
     console.log("sender_account:", sender_account)
-
-    // These info's are associated with my Phantom's Wallet 2
-    // seed = Uint8Array.from([234,213,96,136,124,249,130,101,245,195,125,75,212,81,23,86,57,128,3,226,133,171,65,198,38,28,74,250,148,240,36,24,13,146,38,110,234,163,131,127,98,18,6,100,103,188,69,138,42,228,138,170,182,200,54,223,243,146,218,106,35,2,21,143]);
-    // sender_keypair = Keypair.fromSecretKey(seed)
-    // console.log("Signer Keypair:", sender_keypair)
-
-    /* interact with the program via rpc */
-    // await program.rpc.initializeNativeSol(
-    //   new anchor.BN(start_time),
-    //   new anchor.BN(amount),
-    //   {
-    //   accounts: {
-    //     escrowAccount: escrow_account,
-        // senderAccount: sender_account,
-    //     systemProgram: SystemProgram.programId,
-    //     receiverAccount: receiver_account,
-    //     vault: vault.publicKey
-    //     },
-    //   signers: [sender_keypair]
-    //   }
-    // );
 
     /* interact with the program via methods() */
     const tx = await program.methods.initializeNativeSol(
@@ -272,21 +241,6 @@ async function withdrawNativeToken() {
   const vault_keypair = Keypair.fromSecretKey(vault_seed)
   console.log("vault_keypair:", vault_keypair)
 
-  /* interact with the program via rpc */
-  // await program.rpc.withdrawNativeSol(
-  //   new anchor.BN(amount),
-  //   {
-  //   accounts: {
-  //     escrowAccount: escrow_account,
-  //     senderAccount: sender_account,
-  //     systemProgram: SystemProgram.programId,
-  //     receiverAccount: receiver_account,
-  //     vault: new PublicKey(obj.vault_publickey)
-  //     },
-  //   signers: [vault_keypair]
-  //   }
-  // );
-
   /* interact with the program via methods() */
   const tx = await program.methods.withdrawNativeSol(
     new anchor.BN(amount)
@@ -315,6 +269,19 @@ async function withdrawNativeToken() {
 }
 
 async function transferSPLToken() {
+  async function findAssociatedTokenAddress(walletAddress, tokenMintAddress) {
+    return (
+      await PublicKey.findProgramAddress(
+        [
+          walletAddress.toBuffer(),
+          TOKEN_PROGRAM_ID.toBuffer(),
+          tokenMintAddress.toBuffer(),
+        ],
+        SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID
+      )
+    )[0];
+  }
+
   /* create a provider that will establish a connection to the solana network */
   const provider = await getProvider();
 
@@ -327,25 +294,22 @@ async function transferSPLToken() {
   const amount = (sol_amount * LAMPORTS_PER_SOL).toString();
   console.log("amount:", amount)
 
-  // These info's are associated with my Wallet 4 escrow
-  seed = Uint8Array.from([12,19,55,150,170,193,110,212,54,210,94,198,104,113,139,8,232,140,140,99,67,112,126,103,73,4,100,226,93,149,206,19,190,194,240,225,99,17,113,72,89,154,70,103,181,68,149,140,49,86,19,116,43,215,237,246,246,18,91,94,182,109,250,10]);
-  sender_keypair = Keypair.fromSecretKey(seed)
-  console.log("Sender Keypair:", sender_keypair)
   console.log("Logged in wallet address:", window.solana.publicKey.toString())
-  console.log("sender address(keypair):", sender_keypair.publicKey.toBase58())
 
-  const sender_account = sender_keypair.publicKey;
-
-  console.log("tokenmint:", tokenmint)
+  const sender_account = new PublicKey(sender_address);
+  console.log("sender_account:", sender_account.toBase58())
+  console.log("tokenmint:", tokenmint.toBase58())
 
   var token_escrow = null;
   const start_time = Math.floor(Date.now()/1000);
   console.log("start_time:", start_time)
   const receiver_account = new PublicKey(rkey);
   const vault = Keypair.generate();
-  const vault_ata = getAssociatedTokenAddress(tokenmint, vault.publicKey, false);
-  // console.log("mint key", mint.toBase58());
   console.log("vault pubkey:", vault.publicKey.toBase58())
+
+  const vault_ata = await findAssociatedTokenAddress(vault.publicKey, tokenmint);
+  console.log("vault ata:", vault_ata)
+  console.log("vault ata adrs:", vault_ata.toBase58())
 
   // Storing PDA to the browser's local storage
   const valutObj = {
@@ -362,44 +326,14 @@ async function transferSPLToken() {
   ],
   program.programId);
   token_escrow = _token_escrow_account;
+  console.log("token_escrow_publickey:", token_escrow.toBase58())
 
-  const sender_ata = await getOrCreateAssociatedTokenAccount(
-    provider.connection,
-    sender_keypair,
-    tokenmint,
-    sender_keypair.publicKey
+  const sender_ata = await findAssociatedTokenAddress(
+    sender_account,
+    tokenmint
   );
-  console.log("sender ATA", sender_ata.address.toBase58());
-
-  // var sender_ata_token = await provider.connection.getTokenAccountBalance(sender_ata.address);
-  // console.log("Total minted token to sender ATA : ", Number(sender_ata_token.value.amount));
-  
-  // These info's are associated with my Phantom's Wallet 2
-  // const private_key = "5hKEG8toa57P13JDDzvQbcLmXyEkXvdb76PPi8K4DHGcGheRzMB1a2tskeKJwfVioipVWi1ZxiE3dZt5Q7aABiza";
-  // seed = Uint8Array.from([234,213,96,136,124,249,130,101,245,195,125,75,212,81,23,86,57,128,3,226,133,171,65,198,38,28,74,250,148,240,36,24,13,146,38,110,234,163,131,127,98,18,6,100,103,188,69,138,42,228,138,170,182,200,54,223,243,146,218,106,35,2,21,143]);
-  // sender_keypair = Keypair.fromSecretKey(seed)
-  // console.log("Signer Keypair:", sender_keypair)
-
-  // await program.rpc.intializeFungibleToken(
-  //   new anchor.BN(start_time),
-  //   new anchor.BN(amount),
-  //   {
-  //   accounts:{
-  //     escrowAccount: token_escrow,
-  //     senderAssociatedInfo: sender_ata.address,
-  //     vaultAssociatedInfo: (await vault_ata).toBase58(),
-  //     senderAccount: sender_keypair.publicKey,
-  //     vault: vault.publicKey,
-  //     receiverAccount: receiver_account,
-  //     mint:tokenmint,
-  //     tokenProgram: TOKEN_PROGRAM_ID,
-  //     systemProgram: anchor.web3.SystemProgram.programId,
-  //     associatedTokenProgram:SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID,
-  //     rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-  //     },
-  //   signers: [sender_keypair]
-  //   }
-  // );
+  console.log("sender ATA", sender_ata);
+  console.log("sender ATA adrs:", sender_ata.toBase58());
 
   /* interact with the program via methods() */
   const tx = await program.methods.intializeFungibleToken(
@@ -407,15 +341,15 @@ async function transferSPLToken() {
     new anchor.BN(amount),
     ).accounts({
       escrowAccount: token_escrow,
-      senderAssociatedInfo: sender_ata.address,
-      vaultAssociatedInfo: (await vault_ata).toBase58(),
-      senderAccount: sender_keypair.publicKey,
+      senderAssociatedInfo: sender_ata,
+      vaultAssociatedInfo: vault_ata,
+      senderAccount: sender_account,
       vault: vault.publicKey,
       receiverAccount: receiver_account,
-      mint:tokenmint,
+      mint: tokenmint,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: anchor.web3.SystemProgram.programId,
-      associatedTokenProgram:SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID,
+      associatedTokenProgram: SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID,
       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
   }).transaction();
 
@@ -436,6 +370,18 @@ async function transferSPLToken() {
 }
 
 async function withdrawSPLToken() {
+  async function findAssociatedTokenAddress(walletAddress, tokenMintAddress) {
+    return (
+      await PublicKey.findProgramAddress(
+        [
+          walletAddress.toBuffer(),
+          TOKEN_PROGRAM_ID.toBuffer(),
+          tokenMintAddress.toBuffer(),
+        ],
+        SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID
+      )
+    )[0];
+  }
   /* create a provider that will establish a connection to the solana network */
   const provider = await getProvider();
 
@@ -445,23 +391,14 @@ async function withdrawSPLToken() {
 
   const connection = new Connection(network, opts.preflightCommitment);
 
-  // These info's are associated with my Wallet 3
-  seed = Uint8Array.from([50,192,253,237,154,150,29,170,251,216,155,132,232,48,253,198,223,206,79,105,116,135,27,93,46,59,119,0,121,124,148,17,42,62,249,54,229,198,108,202,162,174,6,134,206,244,187,37,196,80,8,250,223,107,162,213,127,30,116,210,164,244,152,196]);
-  receiver_keypair = Keypair.fromSecretKey(seed)
-  console.log("Receiver Keypair:", receiver_keypair)
-  console.log("Receiver PublicKey:", receiver_keypair.publicKey.toBase58())
-
-  // These info's are associated with my SPL-Wallet-1
-  seed = Uint8Array.from([12,19,55,150,170,193,110,212,54,210,94,198,104,113,139,8,232,140,140,99,67,112,126,103,73,4,100,226,93,149,206,19,190,194,240,225,99,17,113,72,89,154,70,103,181,68,149,140,49,86,19,116,43,215,237,246,246,18,91,94,182,109,250,10]);
-  sender_keypair = Keypair.fromSecretKey(seed)
-  console.log("Signer Keypair:", sender_keypair)
+  const sender_account = new PublicKey(sender_address);
 
   const amount = (sol_amount * LAMPORTS_PER_SOL).toString();
   console.log("amount:", amount)
   console.log("Logged in wallet address:", window.solana.publicKey.toString())
-  console.log("sender address:", sender_keypair.publicKey.toBase58())
-  const sender_account = sender_keypair.publicKey;
-  console.log("sender_account:", sender_account)
+  // console.log("sender address:", sender_keypair.publicKey.toBase58())
+  // const sender_account = sender_keypair.publicKey;
+  // console.log("sender_account:", sender_account)
 
   var token_escrow = null;
   const [_token_escrow_account, _token_bump] = await PublicKey.findProgramAddress([
@@ -469,7 +406,8 @@ async function withdrawSPLToken() {
     sender_account.toBuffer()
   ],
   program.programId);
-  token_escrow = _token_escrow_account;  
+  token_escrow = _token_escrow_account; 
+  console.log("token_escrow_publickey:", token_escrow.toBase58()) 
 
   // Retrieving Data from the browser's local storage
   const text = localStorage.getItem("vaultData");
@@ -489,38 +427,19 @@ async function withdrawSPLToken() {
   const vault_keypair = Keypair.fromSecretKey(vault_seed)
   console.log("vault_keypair:", vault_keypair)
 
-  const vault_ata = getAssociatedTokenAddress(tokenmint, vault_keypair.publicKey, false);
-
+  const vault_ata = await findAssociatedTokenAddress(vault_keypair.publicKey, tokenmint);
+  console.log("vault_ata_publickey:", vault_ata.toBase58())
   const receiver_account = new PublicKey(rkey);
-  const receiver_ata = getAssociatedTokenAddress(tokenmint, receiver_account, false);
-
-  // await program.rpc.withdrawFungibleToken(
-  //   new anchor.BN(amount),
-  //   {
-  //   accounts:{
-  //     escrowAccount: token_escrow,
-  //     receiverAssociatedInfo: (await receiver_ata).toBase58(),
-  //     vaultAssociatedInfo: (await vault_ata).toBase58(),
-  //     senderAccount: sender_keypair.publicKey,
-  //     vault: vault_keypair.publicKey,
-  //     receiverAccount: receiver_account,
-  //     mint:tokenmint,
-  //     tokenProgram: TOKEN_PROGRAM_ID,
-  //     systemProgram: anchor.web3.SystemProgram.programId,
-  //     associatedTokenProgram:SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID,
-  //     rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-  //     },
-  //   signers: [receiver_keypair, vault_keypair]
-  //   }
-  // );
+  const receiver_ata = await findAssociatedTokenAddress(receiver_account, tokenmint);
+  console.log("receiver_ata_publickey:", receiver_ata.toBase58())
 
   const tx = await program.methods.withdrawFungibleToken(
     new anchor.BN(amount),
     ).accounts({
       escrowAccount: token_escrow,
-      receiverAssociatedInfo: (await receiver_ata).toBase58(),
-      vaultAssociatedInfo: (await vault_ata).toBase58(),
-      senderAccount: sender_keypair.publicKey,
+      receiverAssociatedInfo: receiver_ata,
+      vaultAssociatedInfo: vault_ata,
+      senderAccount: sender_account,
       vault: vault_keypair.publicKey,
       receiverAccount: receiver_account,
       mint:tokenmint,
